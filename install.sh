@@ -17,6 +17,7 @@ cp -R "${SCRIPT_DIR}/skills/reference-driven-design/"* "${TARGET_DIR}/"
 
 echo "[3/3] Verifying installation..."
 python3 "${TARGET_DIR}/scripts/fetch_references.py" --help >/dev/null
+python3 "${TARGET_DIR}/scripts/cutout_assets.py" --help >/dev/null
 python3 "${TARGET_DIR}/scripts/export_presentation.py" --help >/dev/null
 
 echo "[OK] Reference-Driven Design skill installed at: ${TARGET_DIR}"

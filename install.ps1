@@ -26,6 +26,7 @@ if (Test-Path $SkillMdPath) {
 # 3. Verify installation
 Write-Host "`n[3/3] Verifying scripts..." -ForegroundColor Cyan
 python "$TargetSkillsDir\scripts\fetch_references.py" --help | Out-Null
+python "$TargetSkillsDir\scripts\cutout_assets.py" --help | Out-Null
 python "$TargetSkillsDir\scripts\export_presentation.py" --help | Out-Null
 
 Write-Host "`n[OK] Reference-Driven Design skill successfully installed!" -ForegroundColor Green

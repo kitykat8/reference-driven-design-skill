@@ -94,31 +94,67 @@ Imagine you are the art director of the studio that created the reference, desig
 
 ---
 
-### Phase 5: Tool-Specific Execution (Реализация в рамках дизайн-системы)
+### Phase 5: Tool-Specific Execution & Asset Cutout Pipeline (Реализация, генерация единых иконок и вырезание фона)
 
 Translate the extracted Design System + your original creative layouts into the target deliverable:
-- **When building Presentations / Pitch Decks (`.pdf` or `.pptx` — NEVER just an HTML site)**:
-  - **Deliverable Rule**: Presentations must **always** be delivered as a **PDF (`.pdf`)** or **PowerPoint (`.pptx`)** file (or both, depending on what the user requested) — **never** leave a presentation as just an HTML webpage.
-  - Build the 16:9 vector slide source (`.slide` sections with Google Fonts and custom SVG diagrams) and run the built-in exporter script `scripts/export_presentation.py` via `run_command`:
-    ```powershell
-    python "C:\Users\rusla\.gemini\config\skills\reference-driven-design\scripts\export_presentation.py" `
-      --input "<slide_source.html>" `
-      --pdf "<output_presentation.pdf>" `
-      --pptx "<output_presentation.pptx>" `
-      --preview "<artifact_dir>/slides_export_preview.jpg" `
-      --slides 10 `
-      --base-width 800
-    ```
-    *(Pass `--pdf`, `--pptx`, or both according to the user's preference, and always inspect `<artifact_dir>/slides_export_preview.jpg` with `view_file` to verify that every slide rendered without clipping or layout issues!)*
-- **When using `generate_image`**: Pass the 1–3 user-approved reference images (`<artifact_dir>/ref_X.jpg`) into `ImagePaths`, and explicitly instruct the prompt to **adopt the reference's color palette, grid discipline, spacing, and typography style while inventing a fresh, original composition and visual metaphor** for the subject (not a literal 1:1 trace of the reference's objects).
-- **When writing Websites / Landing Pages (HTML/CSS/JS)**: Lock in the reference's CSS tokens (`--bg`, `--ink`, `--accent`, grid columns, spacing scale, border styles, font pairings), and compose original, varied section layouts tailored to the content.
-- **When using Illustrator / InDesign MCP**: Lock in the reference's document grid, margins, swatches, and paragraph styles, then compose an original graphic layout within that grid and export to `.pdf`.
+
+1. **Unified Icon Generation & Background Cutout (`scripts/cutout_assets.py --mode grid`)**:
+   - If the presentation (or design) needs icons, **NEVER** use generic system emojis or disparate icons, and **NEVER** place icons with an unremoved rectangular background box onto a slide.
+   - Generate a **Unified Icon Sheet** in a single `generate_image` call (e.g., a `2x2` or `3x3` grid of icons drawn in the **exact same style, stroke weight, and geometry** on a flat solid `#000000` or `#FFFFFF` background with generous margin around each icon and zero grid lines/text).
+   - Immediately slice the sheet and remove the background from all icons using `scripts/cutout_assets.py`:
+     ```powershell
+     python "C:\Users\rusla\.gemini\config\skills\reference-driven-design\scripts\cutout_assets.py" `
+       --input "<artifact_dir>/icon_sheet.jpg" `
+       --mode grid `
+       --grid 2x2 `
+       --output "<project_dir>/assets/icons" `
+       --prefix "icon" `
+       --recolor "#EFE852,#0A0A0A,#FAFAFA" `
+       --preview "<artifact_dir>/icons_cutout_preview.jpg"
+     ```
+   - Inspect `<artifact_dir>/icons_cutout_preview.jpg` via `view_file` (checkerboard = transparent alpha) and embed the transparent `.png` icons (or their recolored design-token variants) into your slides!
+
+2. **Smart Background Removal for Generated Images (`scripts/cutout_assets.py --mode single`)**:
+   - **Why**: Raw rectangular AI-generated images pasted onto colored or dark presentation slides look amateurish and break the slide's modular background.
+   - **When to ALWAYS cut out the background**:
+     - Isolated subjects, hero objects, products, animals/characters, 3D renders, anatomical/technical illustrations, or badges placed on top of a colored/dark/light slide surface.
+   - **When to keep the background**:
+     - Only when the image is intentionally designed as a **full-bleed edge-to-edge photography panel** or a strictly framed editorial photo block.
+   - Run neural + edge-decontaminated background removal via `scripts/cutout_assets.py`:
+     ```powershell
+     python "C:\Users\rusla\.gemini\config\skills\reference-driven-design\scripts\cutout_assets.py" `
+       --input "<generated_or_source_image.jpg>" `
+       --mode single `
+       --engine rembg `
+       --trim `
+       --output "<project_dir>/assets/subject_cutout.png" `
+       --preview "<artifact_dir>/subject_cutout_preview.jpg"
+     ```
+
+3. **When building Presentations / Pitch Decks (`.pdf` or `.pptx` — NEVER just an HTML site)**:
+   - **Deliverable Rule**: Presentations must **always** be delivered as a **PDF (`.pdf`)** or **PowerPoint (`.pptx`)** file (or both, depending on what the user requested) — **never** leave a presentation as just an HTML webpage.
+   - Build the 16:9 vector slide source (`.slide` sections with Google Fonts, custom SVG diagrams, unified transparent `.png` icons, and transparent `.png` image cutouts) and run `scripts/export_presentation.py` via `run_command`:
+     ```powershell
+     python "C:\Users\rusla\.gemini\config\skills\reference-driven-design\scripts\export_presentation.py" `
+       --input "<slide_source.html>" `
+       --pdf "<output_presentation.pdf>" `
+       --pptx "<output_presentation.pptx>" `
+       --preview "<artifact_dir>/slides_export_preview.jpg" `
+       --slides 10 `
+       --base-width 800
+     ```
+     *(Always inspect `<artifact_dir>/slides_export_preview.jpg` with `view_file` to verify that every slide, cutout image, and icon rendered cleanly!)*
+
+4. **When using `generate_image` / Websites / Illustrator / InDesign**:
+   - Pass the 1–3 user-approved reference images (`<artifact_dir>/ref_X.jpg`) into `ImagePaths`, lock in the reference's design system tokens, and compose original layouts within that grid.
 
 ---
 
 ## Anti-Patterns Checklist (Чего делать категорически нельзя)
 
 - ❌ **NO Execution Without Approval**: Never generate the final design before the user has seen the reference images + font pairings and approved them.
+- ❌ **NO Uncut Rectangular Backgrounds on Icons or Isolated Subjects**: Never paste icons or isolated generated objects with a raw rectangular background box onto presentation slides — always cut out their background to transparent `.png` via `scripts/cutout_assets.py`.
+- ❌ **NO Inconsistent Icons**: Never mix random icon styles or emojis — always generate icons together in a single unified style and cut out their background.
 - ❌ **NO Presentations Delivered as Websites**: When the user asks for a presentation, never deliver an HTML website as the final result — always export and deliver `.pdf` and/or `.pptx` (as requested by the user) using `scripts/export_presentation.py`.
 - ❌ **NO Blind 1:1 Layout Cloning**: Never mindlessly copy the exact blocks, dummy widgets (like random phone frames), or literal text labels of the reference. Extract the **design system** (grid, spacing, colors, typography, micro-details) and invent **original compositions** inside those rules.
 - ❌ **NO Breaking the Design System**: Your creative imagination must operate *inside* the reference's spacing, grid, color ratios, and typographic rules — never drift back into generic AI gradients or unrelated styles.

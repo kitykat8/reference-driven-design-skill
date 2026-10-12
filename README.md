@@ -73,7 +73,19 @@ flowchart TD
 
 ---
 
-### Фаза 5. Экспорт презентаций в `.pdf` и `.pptx` (`scripts/export_presentation.py`)
+### Фаза 5. Генерация единого набора иконок с вырезанием фона (`scripts/cutout_assets.py`) и экспорт в `.pdf` / `.pptx` (`scripts/export_presentation.py`)
+
+#### 1. Генерация иконок в одном стиле + авто-вырезание фона (`--mode grid`)
+Если для презентации нужны иконки, нейросеть **не вставляет разнобойные эмодзи или картинки с прямоугольным фоном**:
+- Сначала она генерирует **единый лист иконок (`Unified Icon Sheet`, `2×2` или `3×3`)** за один вызов в строго едином стиле, толщине линий и геометрии на сплошном контрастном фоне.
+- Затем скрипт `scripts/cutout_assets.py --mode grid` автоматически нарезает лист на отдельные иконки, **чисто вырезает фон в прозрачный `RGBA .png`** с деконтаминацией краёв (без белых/чёрных ореолов), центрирует в квадратном холсте `512×512` и создаёт перекрашенные версии под цвета дизайн-системы (`--recolor "#EFE852,#0A0A0A,#FAFAFA"`).
+
+#### 2. Умное вырезание фона у сгенерированных картинок (`--mode single --engine rembg`)
+Чтобы презентации не портились прямоугольными «коробками» от сгенерированных картинок на цветных или тёмных слайдах:
+- Там, где на слайде нужен изолированный объект, животное, 3D-рендер, продукт или иллюстрация, агент прогоняет картинку через нейросетевой сегментатор `rembg` (`U2Net` + очистка краевого ореола) в `scripts/cutout_assets.py --mode single --engine rembg --trim`.
+- Прямоугольный фон оставляется только там, где по вёрстке задумана полноценная фотографическая панель во весь блок (`full-bleed photo card`).
+
+#### 3. Экспорт презентации в `.pdf` и `.pptx` (`scripts/export_presentation.py`)
 Когда вы заказываете презентацию или питч-дек, агент **не оставляет её просто HTML-страницей**, а компилирует через `scripts/export_presentation.py` в готовые файлы:
 1. **Векторный `16:9` PDF (`.pdf`)** — со всеми вшитыми шрифтами Google Fonts, идеальной векторной графикой и нулевыми полями печати (`@page`).
 2. **Широкоэкранный `16:9` PowerPoint (`.pptx`)** — слайды в разрешении Retina `2560×1440` (благодаря чему нестандартные шрифты вроде `Unbounded` и сложная модульная сетка открываются без единого сдвига на любом ПК или Mac) + заголовки слайдов автоматически добавляются в заметки докладчика (`Speaker Notes`).
@@ -91,7 +103,7 @@ flowchart TD
 ```text
 reference-driven-design-skill/
 ├── README.md                          # Документация и руководство по установке
-├── requirements.txt                   # Python-зависимости (Pillow, PyMuPDF, python-pptx)
+├── requirements.txt                   # Python-зависимости (Pillow, PyMuPDF, python-pptx, rembg, onnxruntime)
 ├── install.ps1                        # Автоматический установщик для Windows (PowerShell)
 ├── install.sh                         # Автоматический установщик для macOS / Linux (Bash)
 ├── skills/
@@ -101,8 +113,9 @@ reference-driven-design-skill/
 │       │   └── platform-queries-and-dna.md  # База поисковых дорков (Behance/Pinterest/BP&O) и разбора ДНК
 │       └── scripts/
 │           ├── fetch_references.py    # Парсер референсов + генератор мудборда и карточек шрифтов (.ttf)
+│           ├── cutout_assets.py       # Нарезка единых сеток иконок + вырезание фона (rembg / alpha-matting)
 │           └── export_presentation.py # Конвертер презентаций в векторный 16:9 .pdf и Retina .pptx
-└── assets/                            # Примеры работы скилла (мудборды, шрифты, PDF, PPTX)
+└── assets/                            # Примеры работы скилла (мудборды, шрифты, вырезанные ассеты, PDF, PPTX)
 ```
 
 ---
@@ -133,7 +146,7 @@ chmod +x install.sh
 ```
 
 Скрипт автоматически:
-1. Установит библиотеки `Pillow`, `pymupdf` и `python-pptx`.
+1. Установит библиотеки `Pillow`, `pymupdf`, `python-pptx`, `rembg`, `onnxruntime`, `opencv-python-headless` и `scipy`.
 2. Скопирует скилл в глобальную директорию `~/.gemini/config/skills/reference-driven-design`.
 3. Пропишет корректные пути под вашу учётную запись и проверит работоспособность скриптов.
 
@@ -143,7 +156,7 @@ chmod +x install.sh
 
 1. **Установите зависимости Python**:
    ```bash
-   pip install Pillow pymupdf python-pptx reportlab
+   pip install Pillow pymupdf python-pptx reportlab numpy scipy opencv-python-headless rembg onnxruntime
    ```
 2. **Скопируйте папку скилла** `skills/reference-driven-design` в вашу глобальную папку скиллов:
    - **Windows**: `C:\Users\<ИМЯ_ПОЛЬЗОВАТЕЛЯ>\.gemini\config\skills\reference-driven-design`
@@ -155,7 +168,8 @@ chmod +x install.sh
      1. Actively search and visually display 2–4 real references (Pinterest, Behance, Fonts In Use, BP&O, Dribbble, Awwwards) plus curated font pairings.
      2. **STOP and ask the user whether they like the selected references** (and for presentations, whether they want `.pdf` or `.pptx`) before generating or coding the design.
      3. **Strict Design System + Creative Imagination**: Once approved, strictly lock in the reference's **design system** (grid, margins, spacing rhythm, color palette, typography hierarchy, line/border rules), but **do NOT copy the reference's blocks 1:1** — use creative imagination to invent original compositions, visual metaphors, and custom layouts within that design system.
-     4. **Presentations as `.pdf` or `.pptx` (Never Just a Website)**: Whenever creating a presentation or slide deck, deliver the final result as a **PDF (`.pdf`)** or **PowerPoint (`.pptx`)** file (as requested by the user, or both) via `export_presentation.py`, never merely as an HTML webpage.
+     4. **Unified Icons & Smart Background Cutout (`cutout_assets.py`)**: Whenever a presentation or design needs icons, generate them together in a single unified style (`2x2` or `3x3` sheet) and cut out their backgrounds via `cutout_assets.py --mode grid`. Whenever generated images (objects, subjects, products, illustrations) are placed onto colored/dark slide surfaces where a rectangular background box would look bad, cut out their backgrounds to transparent `.png` via `cutout_assets.py --mode single --engine rembg`.
+     5. **Presentations as `.pdf` or `.pptx` (Never Just a Website)**: Whenever creating a presentation or slide deck, deliver the final result as a **PDF (`.pdf`)** or **PowerPoint (`.pptx`)** file (as requested by the user, or both) via `export_presentation.py`, never merely as an HTML webpage.
    ```
 
 ---
@@ -175,7 +189,30 @@ python ~/.gemini/config/skills/reference-driven-design/scripts/fetch_references.
   -p "deck"
 ```
 
-### 2. Экспортировать презентацию в векторный `.pdf` и широкоэкранный `.pptx` (`export_presentation.py`)
+### 2. Нарезать единый лист иконок 2×2 и вырезать у них фон (`cutout_assets.py --mode grid`)
+```powershell
+python ~/.gemini/config/skills/reference-driven-design/scripts/cutout_assets.py `
+  --input "./icon_sheet.jpg" `
+  --mode grid `
+  --grid 2x2 `
+  --output "./assets/icons" `
+  --prefix "icon" `
+  --recolor "#EFE852,#0A0A0A,#FAFAFA" `
+  --preview "./icons_cutout_preview.jpg"
+```
+
+### 3. Вырезать фон у сгенерированной картинки / объекта (`cutout_assets.py --mode single`)
+```powershell
+python ~/.gemini/config/skills/reference-driven-design/scripts/cutout_assets.py `
+  --input "./generated_object.jpg" `
+  --mode single `
+  --engine rembg `
+  --trim `
+  --output "./assets/object_cutout.png" `
+  --preview "./object_cutout_preview.jpg"
+```
+
+### 4. Экспортировать презентацию в векторный `.pdf` и широкоэкранный `.pptx` (`export_presentation.py`)
 ```powershell
 python ~/.gemini/config/skills/reference-driven-design/scripts/export_presentation.py `
   --input "./slides_source.html" `
